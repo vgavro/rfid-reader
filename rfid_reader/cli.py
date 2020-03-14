@@ -10,6 +10,30 @@ from . import create_channel, create_reader
 logger = structlog.get_logger()
 
 
+def do_inventory_forever(channel_factory, reader_factory, retry_timeout=None):
+    while True:
+        try:
+            channel = channel_factory()
+        except (ConnectionError, OSError, IOError, RuntimeError) as exc:
+            logger.error('Channel create error', error=exc, sleep=retry_timeout)
+            if retry_timeout is None:
+                raise
+            time.sleep(retry_timeout)
+            continue
+
+        reader = reader_factory(channel)
+
+        try:
+            reader.do_inventory(lambda epc: logger.info('Found', epc=epc))
+        except (ConnectionError, OSError, IOError, RuntimeError) as exc:
+            logger.error('Inventory loop error', error=exc, sleep=retry_timeout)
+            if retry_timeout is None:
+                raise
+        finally:
+            channel.close()
+        time.sleep(retry_timeout)
+
+
 @click.command()
 @click.option('-c', '--config', default='rfid-reader.conf', type=click.File('r'))
 def rfid_reader(config):
@@ -27,17 +51,18 @@ def rfid_reader(config):
         type: tcp
         host: 192.168.0.178
         port: 4001
+        connect_timeout: 3  # seconds
         # https://docs.python.org/3/library/socket.html#socket.socket.settimeout
-        timeout: 5  # seconds
+        # timeout: 5  # read(?) timeout, not sure how it's work with current logic
 
     \b
-    # socket example (tcp is shortcut for socket INET, STREAM, address=(host, port))
+    # socket example ("tcp" is shortcut for INET, STREAM, address=(host, port))
     # see https://docs.python.org/3/library/socket.html#socket.socket
     # channel:
     #     type: socket
     #     family: INET  # or INET6
-    #     type: STREAM  # STREAM for tcp, DGRAM for udp
-    #     address: ('192.168.0.178', 4001)
+    #     socket_type: STREAM  # STREAM for tcp, DGRAM for udp
+    #     address: ['192.168.0.178', 4001]
 
 
     \b
@@ -65,24 +90,8 @@ def rfid_reader(config):
     else:
         reader_opts['trace'] = lambda msg: msg
 
-    retry_timeout = config.pop('retry_timeout', None)
-
-    while True:
-        try:
-            channel = create_channel(channel_type, **channel_opts)
-        except (ConnectionError, OSError, IOError, RuntimeError) as exc:
-            logger.error('Channel create error', error=exc, sleep=retry_timeout)
-            if retry_timeout is None:
-                raise
-            time.sleep(retry_timeout)
-            continue
-
-        reader = create_reader(reader_type, channel, **reader_opts)
-
-        try:
-            reader.do_inventory(lambda epc: logger.info('Found', epc=epc))
-        except (ConnectionError, OSError, IOError, RuntimeError) as exc:
-            logger.error('Inventory loop error', error=exc, sleep=retry_timeout)
-            if retry_timeout is None:
-                raise
-            time.sleep(retry_timeout)
+    do_inventory_forever(
+        lambda: create_channel(channel_type, **channel_opts),
+        lambda channel: create_reader(reader_type, channel, **reader_opts),
+        retry_timeout=config.pop('retry_timeout', None)
+    )

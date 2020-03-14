@@ -8,26 +8,32 @@ PROTOCOL_REGISTRY = {
 }
 
 
-def create_socket(address, family=-1, type=-1, proto=-1, fileno=None, timeout=None):
+def create_socket(address, family=-1, socket_type=-1, proto=-1, fileno=None,
+                  connect_timeout=None, timeout=None):
     import socket
 
     if isinstance(family, str):
         family = getattr(socket, f'AF_{family.upper()}')
-    if isinstance(type, str):
-        type = getattr(socket, f'SOCK_{type.upper()}')
+    if isinstance(socket_type, str):
+        socket_type = getattr(socket, f'SOCK_{socket_type.upper()}')
 
-    channel = socket.socket(family, type, proto, fileno)
-    if timeout is not None:
-        channel.settimeout(timeout)
-    channel.connect(address)
+    channel = socket.socket(family, socket_type, proto, fileno)
+    if connect_timeout is not None:
+        channel.settimeout(connect_timeout)
+    try:
+        channel.connect(tuple(address) if isinstance(address, list) else address)
+    except Exception:
+        channel.close()
+        raise
+    channel.settimeout(timeout)
     return channel
 
 
-def create_tcp(host, port, timeout=None):
+def create_tcp(host, port, **kwargs):
     import socket
 
     return create_socket((host, port), socket.AF_INET, socket.SOCK_STREAM,
-                         timeout=timeout)
+                         **kwargs)
 
 
 def create_serial(port, baudrate=115200, **kwargs):
@@ -37,7 +43,7 @@ def create_serial(port, baudrate=115200, **kwargs):
     rv = serial.Serial(port, baudrate, **kwargs)
     if rv is None:
         # Not sure it can be None instead of raising exception,
-        # but was in old code
+        # maybe some magic with metaclass, but leave it as it was in old code
         raise RuntimeError('No device found, please check the port name '
                            '(i.e., python -m serial.tools.list_ports)')
     return rv

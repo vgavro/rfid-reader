@@ -1,4 +1,5 @@
 import time
+import os.path
 
 import click
 import yaml
@@ -34,49 +35,23 @@ def do_inventory_forever(channel_factory, reader_factory, retry_timeout=None):
         time.sleep(retry_timeout)
 
 
-@click.command()
+HELP = """Example config file (yaml)
+
+```
+
+{config}
+```
+""".format(config=(
+        open(os.path.join(os.path.dirname(__file__),
+                          'rfid-reader.example.conf')).read()
+        # all this shit because of click parahraph reformatting rules
+        .replace('##\n', '\b\n')
+))
+
+
+@click.command(help=HELP)
 @click.option('-c', '--config', default='rfid-reader.conf', type=click.File('r'))
 def rfid_reader(config):
-    """Example config file (yaml)
-
-    \b
-    ```
-    reader:
-        type: yr904
-        wait_timeout: 0.2  # seconds, default read wait
-        trace: true  # if set to true we get each packet send/recv (MUCH information)
-
-    \b
-    channel:
-        type: tcp
-        host: 192.168.0.178
-        port: 4001
-        connect_timeout: 3  # seconds
-        # https://docs.python.org/3/library/socket.html#socket.socket.settimeout
-        # timeout: 5  # read(?) timeout, not sure how it's work with current logic
-
-    \b
-    # socket example ("tcp" is shortcut for INET, STREAM, address=(host, port))
-    # see https://docs.python.org/3/library/socket.html#socket.socket
-    # channel:
-    #     type: socket
-    #     family: INET  # or INET6
-    #     socket_type: STREAM  # STREAM for tcp, DGRAM for udp
-    #     address: ['192.168.0.178', 4001]
-
-
-    \b
-    # serial example (pyserial module required)
-    # see https://pyserial.readthedocs.io/en/latest/pyserial_api.html#serial.Serial
-    # channel:
-    #     type: serial
-    #     port: /dev/ttyUSB0
-    #     baudrate: 115200
-
-    \b
-    retry_timeout: 1  # seconds, if null - exit on first fail
-    ```
-    """
     config = yaml.safe_load(config)
 
     channel_opts = config.pop('channel')

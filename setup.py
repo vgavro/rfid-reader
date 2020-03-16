@@ -26,6 +26,9 @@ setup(
     author_email='vgavro@gmail.com',
     url='http://github.com/vgavro/rfid-reader',
     keywords='',
+    package_data={
+        "": ["*.example.conf"],
+    },
     packages=find_packages(),
     install_requires=requires,
     # tests_require=tests_requires,
